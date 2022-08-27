@@ -1,9 +1,5 @@
-use std::fmt::Write as fmtWrite;
-use std::io::Write;
-use std::num::Wrapping;
-use std::{fmt::Display, io::stdout};
-
 use crossterm::cursor::MoveToColumn;
+use crossterm::queue;
 use crossterm::{
     cursor::{self, MoveTo, MoveToNextLine},
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
@@ -14,9 +10,13 @@ use crossterm::{
     },
     QueueableCommand, Result,
 };
+use std::fmt::Write as fmtWrite;
+use std::io::{BufWriter, Write};
+use std::num::Wrapping;
+use std::{fmt::Display, io::stdout};
 
 fn main() -> Result<()> {
-    let mut stdout = stdout();
+    let mut stdout = BufWriter::new(stdout());
     start(&mut stdout)?;
     let mut dbg = DebugPrinter {
         pos: (20, 20),
@@ -42,16 +42,16 @@ fn main() -> Result<()> {
                 stdout
                     .queue(MoveTo(pos % col, pos / col))?
                     .queue(SetBackgroundColor(Color::AnsiValue(next_color_code.0)))?;
-                print!("{char}");
+                write!(stdout, "{char}")?;
                 pos += 1;
                 next_color_code += 1;
                 dbg.print(format_args!("size: {},{}", row, col));
                 for _ in (pos % col)..col {
-                    print!(" ");
+                    write!(stdout, " ")?;
                 }
                 for _ in (pos / col + 1)..row {
                     for _ in 0..col {
-                        print!(" ");
+                        write!(stdout, " ")?;
                     }
                 }
             }
@@ -61,11 +61,11 @@ fn main() -> Result<()> {
             _ => (),
         }
         // Debug Info
-        execute!(stdout, MoveTo(30, 20), SetBackgroundColor(Color::Black))?;
+        queue!(stdout, MoveTo(30, 20), SetBackgroundColor(Color::Black))?;
         dbg.print(format_args!("pos: {pos}"));
         dbg.print(format_args!("next_color_code: {next_color_code}"));
         dbg.print(format_args!("size: {:?}", size()?));
-        dbg.flush()?;
+        dbg.flush(&mut stdout)?;
         stdout.flush()?;
     }
     cleanup(&mut stdout)?;
@@ -79,13 +79,14 @@ struct DebugPrinter {
 }
 
 impl DebugPrinter {
-    fn flush(&mut self) -> Result<()> {
-        print!(
+    fn flush(&mut self, mut writer: impl Write) -> Result<()> {
+        write!(
+            writer,
             "{}{}{}",
             MoveTo(self.pos.0, self.pos.1),
             SetBackgroundColor(Color::Black),
             self.buf
-        );
+        )?;
         self.buf.clear();
         Ok(())
     }
